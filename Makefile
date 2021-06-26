@@ -5,11 +5,21 @@ build:
 
 dev: build stop
 	-docker rm -f temp-orb 2> /dev/null || :
-	docker run -it --privileged --name temp-orb --volume `pwd`:/outside ibmosquito/temp-orb:1.0.0 /bin/bash
+	docker run -it --volume `pwd`:/outside \
+	  --privileged \
+	  --volume '/etc/timezone:/etc/timezone:ro' \
+	  --volume '/etc/localtime:/etc/localtime:ro' \
+	  --name temp-orb \
+	  ibmosquito/temp-orb:1.0.0 /bin/bash
 
 run: stop
 	-docker rm -f temp-orb 2>/dev/null || :
-	docker run -d --restart=unless-stopped --privileged --name temp-orb ibmosquito/temp-orb:1.0.0
+	docker run -d --restart=unless-stopped \
+	  --privileged \
+	  --volume '/etc/timezone:/etc/timezone:ro' \
+	  --volume '/etc/localtime:/etc/localtime:ro' \
+	  --name temp-orb \
+	  ibmosquito/temp-orb:1.0.0
 
 exec:
 	docker exec -it temp-orb /bin/sh
