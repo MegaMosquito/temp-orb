@@ -17,9 +17,27 @@ import time
 MORNING_HOUR = 6
 EVENING_HOUR = 20
 
-# Globals for the URLs of the PurpleAir sensors to monitor
-INSIDE_URL = 'https://www.purpleair.com/json?show=62499'
-OUTSIDE_URL = 'https://www.purpleair.com/json?show=63619'
+
+# This code connects to the central PurpleAir cloud APIs
+# Example:
+#   curl --header "X-API-Key: *****" https://api.purpleair.com/v1/keys
+#   curl --header "X-API-Key: *****" https://api.purpleair.com/v1/sensors/*****
+# Full API documentation:
+#   https://api.purpleair.com
+# More info:
+#    https://community.purpleair.com/t/making-api-calls-with-the-purpleair-api/180
+#
+# API Details:
+PURPLE_AIR_SENSOR_URL       = 'https://api.purpleair.com/v1/sensors/'
+PURPLE_AIR_API_KEY_HEADER   = 'X-API-Key'
+#
+# My credentials (edit these to contain your own values):
+MY_PURPLE_AIR_READ_API_KEY  = '*****'
+MY_PURPLE_AIR_WRITE_API_KEY = '*****'
+#
+# My sensor indexes (edit these to contain your own values):
+MY_PURPLE_AIR_INDOOR_INDEX  = *****
+MY_PURPLE_AIR_OUTDOOR_INDEX = *****
 
 # Import the required libraries
 import board
@@ -53,6 +71,7 @@ OFFLINE_COLOR = (0, 0, 255)
 # Debug flags
 DEBUG_INSIDE = False
 DEBUG_OUTSIDE = False
+DEBUG_API = False
 DEBUG_MAIN_LOOP = False
 DEBUG_DIMMING = False
 DEBUG_SIGNAL = False
@@ -61,6 +80,21 @@ DEBUG_SIGNAL = False
 def debug(flag, str):
   if flag:
     print(str)
+
+# Invoke the PurpleAir "sensors" API for my sensor with my API key
+def get_sensor(i, t):
+  url = PURPLE_AIR_SENSOR_URL + str(i)
+  headers = {
+    PURPLE_AIR_API_KEY_HEADER:MY_PURPLE_AIR_READ_API_KEY,
+    'Content-Type':'json'
+  }
+  debug(DEBUG_API, 'API request: "' + url + '"')
+  r = requests.get(url, headers=headers, timeout=t)
+  if (200 == r.status_code):
+    debug(DEBUG_API, '--> [success]')
+  else:
+    debug(DEBUG_API, '--> [error] status code: ' + r.status_code)
+  return r
 
 # Thread that monitors inside temperature and updates the `g_inside` global
 INSIDE_REQUEST_TIMEOUT_SEC = 30
@@ -73,22 +107,22 @@ class InsideThread(threading.Thread):
     debug(DEBUG_INSIDE, "Inside temperature monitor thread started!")
     while keep_on_swimming:
       try:
-        debug(DEBUG_INSIDE, ('INSIDE: url="%s", t/o=%d' % (INSIDE_URL, INSIDE_REQUEST_TIMEOUT_SEC)))
-        r = requests.get(INSIDE_URL, timeout=INSIDE_REQUEST_TIMEOUT_SEC)
+        debug(DEBUG_INSIDE, ('INSIDE: t/o=%d' % (INSIDE_REQUEST_TIMEOUT_SEC)))
+        r = get_sensor(MY_PURPLE_AIR_INDOOR_INDEX, INSIDE_REQUEST_TIMEOUT_SEC)
         if 200 == r.status_code:
-          debug(DEBUG_INSIDE, ('--> "%s" [succ]' % (INSIDE_URL)))
+          debug(DEBUG_INSIDE, '--> "inside" [success]')
           g_inside_fails = 0
           j = r.json()
-          g_inside = float(j['results'][0]['temp_f'])
+          g_inside = float(j['sensor']['temperature'])
           debug(DEBUG_INSIDE, ('*** INSIDE == %f ***' % (g_inside)))
         else:
-          debug(DEBUG_INSIDE, ('--> "%s" [fail]' % (INSIDE_URL)))
+          debug(DEBUG_INSIDE, '--> "inside" [failure]')
           g_inside_fails += 1
       except requests.exceptions.Timeout:
-        debug(DEBUG_INSIDE, ('--> "%s" [time]' % (INSIDE_URL)))
+        debug(DEBUG_INSIDE, '--> "inside" [timeout]')
         g_inside_fails += 1
       except:
-        debug(DEBUG_INSIDE, ('--> "%s" [expt]' % (INSIDE_URL)))
+        debug(DEBUG_INSIDE, '--> "inside" [exception]')
         g_inside_fails += 1
       if g_inside_fails > FAIL_COUNT_TOLERANCE:
         g_inside = -1
@@ -106,22 +140,22 @@ class OutsideThread(threading.Thread):
     debug(DEBUG_OUTSIDE, "Outside temperature monitor thread started!")
     while keep_on_swimming:
       try:
-        debug(DEBUG_OUTSIDE, ('OUTSIDE: url="%s", t/o=%d' % (OUTSIDE_URL, OUTSIDE_REQUEST_TIMEOUT_SEC)))
-        r = requests.get(OUTSIDE_URL, timeout=OUTSIDE_REQUEST_TIMEOUT_SEC)
+        debug(DEBUG_OUTSIDE, ('OUTSIDE: t/o=%d' % (OUTSIDE_REQUEST_TIMEOUT_SEC)))
+        r = get_sensor(MY_PURPLE_AIR_OUTDOOR_INDEX, OUTSIDE_REQUEST_TIMEOUT_SEC)
         if 200 == r.status_code:
-          debug(DEBUG_OUTSIDE, ('--> "%s" [succ]' % (OUTSIDE_URL)))
+          debug(DEBUG_OUTSIDE, '--> "inside" [success]') 
           g_outside_fails = 0
           j = r.json()
-          g_outside = float(j['results'][0]['temp_f'])
+          g_outside = float(j['sensor']['temperature'])
           debug(DEBUG_OUTSIDE, ('*** OUTSIDE == %f ***' % (g_outside)))
         else:
-          debug(DEBUG_OUTSIDE, ('--> "%s" [fail]' % (OUTSIDE_URL)))
+          debug(DEBUG_OUTSIDE, '--> "inside" [failure]') 
           g_outside_fails += 1
       except requests.exceptions.Timeout:
-        debug(DEBUG_OUTSIDE, ('--> "%s" [time]' % (OUTSIDE_URL)))
+        debug(DEBUG_OUTSIDE, '--> "inside" [timeout]') 
         g_outside_fails += 1
       except:
-        debug(DEBUG_OUTSIDE, ('--> "%s" [expt]' % (OUTSIDE_URL)))
+        debug(DEBUG_OUTSIDE, '--> "inside" [exception]') 
         g_outside_fails += 1
       if g_outside_fails > FAIL_COUNT_TOLERANCE:
         g_outside = -1
@@ -176,7 +210,7 @@ if __name__ == '__main__':
     now = datetime.now()
     hr = int(now.strftime("%H"))
     if hr < MORNING_HOUR or hr > EVENING_HOUR:
-      rgb = (int(rgb[0] / 2), int(rgb[1] / 2), int(rgb[2] / 2))
+      rgb = (int(rgb[0] / 3), int(rgb[1] / 3), int(rgb[2] / 3))
       debug(DEBUG_DIMMING, ('      Night dimmed:  (%3d,%3d,%3d)' % (rgb[0], rgb[1], rgb[2])))
     neopixels.fill(rgb)
     debug(DEBUG_MAIN_LOOP, ('--> INSIDE == %0.1f, OUTSIDE == %0.1f ==> RGB == (%d,%d,%d) ***' % (g_inside, g_outside, rgb[0], rgb[1], rgb[2])))
