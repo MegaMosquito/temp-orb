@@ -32,12 +32,14 @@ PURPLE_AIR_SENSOR_URL       = 'https://api.purpleair.com/v1/sensors/'
 PURPLE_AIR_API_KEY_HEADER   = 'X-API-Key'
 #
 # My credentials (edit these to contain your own values):
-MY_PURPLE_AIR_READ_API_KEY  = '*****'
-MY_PURPLE_AIR_WRITE_API_KEY = '*****'
+MY_PURPLE_AIR_READ_API_KEY  = 'YOUR KEY GOES HERE'
+MY_PURPLE_AIR_WRITE_API_KEY = 'YOUR KEY GOES HERE'
 #
-# My sensor indexes (edit these to contain your own values):
-MY_PURPLE_AIR_INDOOR_INDEX  = *****
-MY_PURPLE_AIR_OUTDOOR_INDEX = *****
+# My outdoor sensor index (edit this to contain your own index number):
+MY_PURPLE_AIR_OUTDOOR_INDEX = 12345
+
+# URL for my homemade indoor "PicoWAQI" AQI/temperature/pressure sensor
+MY_INDOOR_SENSOR_URL = 'http://192.168.123.92/json'
 
 # Import the required libraries
 import board
@@ -69,6 +71,7 @@ FAIL_COUNT_TOLERANCE = 8
 OFFLINE_COLOR = (0, 0, 255)
 
 # Debug flags
+DEBUG_TEMPS = False
 DEBUG_INSIDE = False
 DEBUG_OUTSIDE = False
 DEBUG_API = False
@@ -104,19 +107,21 @@ class InsideThread(threading.Thread):
   def run(self):
     global g_inside
     global g_inside_fails
+    headers = {}
     debug(DEBUG_INSIDE, "Inside temperature monitor thread started!")
     while keep_on_swimming:
       try:
         debug(DEBUG_INSIDE, ('INSIDE: t/o=%d' % (INSIDE_REQUEST_TIMEOUT_SEC)))
-        r = get_sensor(MY_PURPLE_AIR_INDOOR_INDEX, INSIDE_REQUEST_TIMEOUT_SEC)
+        r = requests.get(MY_INDOOR_SENSOR_URL, headers=headers, timeout=INSIDE_REQUEST_TIMEOUT_SEC)
         if 200 == r.status_code:
           debug(DEBUG_INSIDE, '--> "inside" [success]')
           g_inside_fails = 0
           j = r.json()
-          g_inside = float(j['sensor']['temperature'])
-          debug(DEBUG_INSIDE, ('*** INSIDE == %f ***' % (g_inside)))
+          debug(DEBUG_INSIDE, '--> "inside" [' + json.dumps(j) + ']')
+          g_inside = float(j['temperature']['fahrenheit'])
+          debug(DEBUG_INSIDE or DEBUG_TEMPS, ('*** INSIDE == %f ***' % (g_inside)))
         else:
-          debug(DEBUG_INSIDE, '--> "inside" [failure]')
+          debug(DEBUG_INSIDE, '--> "inside" [failure] status code: ' + r.status_code)
           g_inside_fails += 1
       except requests.exceptions.Timeout:
         debug(DEBUG_INSIDE, '--> "inside" [timeout]')
@@ -147,7 +152,7 @@ class OutsideThread(threading.Thread):
           g_outside_fails = 0
           j = r.json()
           g_outside = float(j['sensor']['temperature'])
-          debug(DEBUG_OUTSIDE, ('*** OUTSIDE == %f ***' % (g_outside)))
+          debug(DEBUG_OUTSIDE or DEBUG_TEMPS, ('*** OUTSIDE == %f ***' % (g_outside)))
         else:
           debug(DEBUG_OUTSIDE, '--> "inside" [failure]') 
           g_outside_fails += 1
